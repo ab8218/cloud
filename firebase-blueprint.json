@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Trip": {
+      "title": "Trip",
+      "description": "Metadata for a travel trip",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the trip" },
+        "destination": { "type": "string", "description": "Primary destination" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "budget": { "type": "number" },
+        "currency": { "type": "string", "description": "Currency code (TWD, USD, etc.)" },
+        "ownerId": { "type": "string", "description": "UID of the creator" },
+        "participants": { "type": "array", "items": { "type": "string" }, "description": "List of participant UIDs" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "startDate", "currency"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "A single expenditure record within a trip",
+      "type": "object",
+      "properties": {
+        "tripId": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "enum": ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Other"] },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "payerId": { "type": "string", "description": "UID of the person who paid" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tripId", "amount", "category", "date", "payerId"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Basic user information",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "email"]
+    }
+  },
+  "firestore": {
+    "trips": {
+      "schema": { "$ref": "#/entities/Trip" },
+      "description": "Collection of trips"
+    },
+    "trips/{tripId}/expenses": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Subcollection of expenses for a specific trip"
+    },
+    "users": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Collection of user profiles"
+    }
+  }
+}
