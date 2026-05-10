@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Primitives & Helpers
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function userId() { return request.auth.uid; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isOwner(data) { return isSignedIn() && data.ownerId == userId(); }
+
+    // 2. Validation Blueprints
+    function isValidTrip(data) {
+      return data.keys().hasAll(['name', 'destination', 'budget', 'currency', 'ownerId', 'participants', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && data.destination is string && data.destination.size() <= 100
+        && data.budget is number && data.budget >= 0
+        && data.currency is string && data.currency.size() == 3
+        && data.ownerId == userId()
+        && data.participants is list && data.participants.size() <= 100
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['amount', 'category', 'description', 'date', 'payerId', 'tripId', 'createdAt'])
+        && data.amount is number && data.amount > 0
+        && data.category in ['Food', 'Transport', 'Housing', 'Shopping', 'Entertainment', 'Other']
+        && data.description is string && data.description.size() <= 200
+        && data.date is string // format check could be more strict
+        && data.payerId == userId()
+        && data.tripId is string
+        && data.createdAt == request.time;
+    }
+
+    // 3. Resource Matches
+    
+    // User Profiles
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && uid == userId() 
+        && incoming().keys().hasAll(['displayName', 'email', 'updatedAt'])
+        && incoming().updatedAt == request.time;
+    }
+
+    // Trips
+    match /trips/{tripId} {
+      // Secure List: Evaluates resource.data directly
+      allow list: if isSignedIn() && (resource.data.ownerId == userId() || userId() in resource.data.participants);
+      allow get: if isSignedIn() && (resource.data.ownerId == userId() || userId() in resource.data.participants);
+      
+      allow create: if isSignedIn() && isValidTrip(incoming());
+      
+      allow update: if isOwner(existing()) && isValidTrip(incoming())
+        && incoming().ownerId == existing().ownerId // Immutable owner
+        && incoming().createdAt == existing().createdAt; // Immutable creation time
+
+      allow delete: if isOwner(existing());
+
+      // Expenses Subcollection
+      match /expenses/{expenseId} {
+        // Master Gate: Check parent trip membership
+        function canAccessTrip() {
+          let trip = get(/databases/$(database)/documents/trips/$(tripId)).data;
+          return trip.ownerId == userId() || userId() in trip.participants;
+        }
+
+        allow list: if isSignedIn() && canAccessTrip();
+        allow get: if isSignedIn() && canAccessTrip();
+        
+        allow create: if isSignedIn() && canAccessTrip() && isValidExpense(incoming()) && incoming().tripId == tripId;
+        
+        allow update: if isSignedIn() && canAccessTrip() && existing().payerId == userId() && isValidExpense(incoming())
+          && incoming().payerId == existing().payerId;
+
+        allow delete: if isSignedIn() && canAccessTrip() && existing().payerId == userId();
+      }
+    }
+  }
+}
